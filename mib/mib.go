@@ -4,6 +4,7 @@ package mib
 import (
 	"bytes"
 	"encoding/asn1"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -49,6 +50,7 @@ func Lookup(prefix string) (asn1.ObjectIdentifier, error) {
 	stderr := new(bytes.Buffer)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
+
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("snmp: Lookup(%q): %q: %s", prefix, cmd.Args, err)
 	}
@@ -78,6 +80,12 @@ var cache struct {
 // parseOID parses the string-encoded OID, for example the
 // string "1.3.6.1.2.1.1.5.0" becomes sysName.0
 func parseOID(s string) (oid asn1.ObjectIdentifier, err error) {
+	s = strings.TrimSpace(s)
+	if len(s) == 0 {
+		err = errors.New("exit status 2")
+		return
+	}
+
 	if s[0] == '.' {
 		s = s[1:]
 	}
