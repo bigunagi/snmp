@@ -23,6 +23,11 @@ type Binding struct {
 	Value asn1.RawValue
 }
 
+// rfc1155
+type TimeTicks struct {
+	ticks uint32 `asn1:"application,tag:4"`
+}
+
 // unmarshal stores in v the value part of binding b.
 func (b *Binding) unmarshal(v interface{}) error {
 	convertClass(&b.Value)
@@ -130,10 +135,10 @@ func (a Binding) less(b Binding) bool {
 // A Request represents an SNMP request to be sent over a Transport.
 type Request struct {
 	ID             int32
-	Type           string // "Get", "GetNext", "GetBulk"
+	Type           string // "Get", "GetNext", "Response", "GetBulk", "Set", "Inform", "Trap", "Report"
 	Bindings       []Binding
-	NonRepeaters   int
-	MaxRepetitions int
+	NonRepeaters   int // used by GetBulk only
+	MaxRepetitions int // used by GetBulk only
 }
 
 // Response represents the response from an SNMP request.
@@ -143,6 +148,16 @@ type Response struct {
 	ErrorIndex  int
 	Bindings    []Binding
 }
+
+// Trap represents the notify from an SNMPv1 trap.
+// type Trap struct {
+// 	Enterprise   asn1.ObjectIdentifier
+// 	AgentAddr    string // OctetString
+// 	GenericTrap  int
+// 	SpecificTrap int
+// 	Timestamp    int // 0, 4294967295
+// 	Bindings     []Binding
+// }
 
 // RoundTripper is an interface representing the ability to execute a
 // single SNMP transaction, obtaining the Response for a given Request.
@@ -192,9 +207,9 @@ func (tr *Transport) RoundTrip(req *Request) (*Response, error) {
 				ErrorStatus int
 				ErrorIndex  int
 				Bindings    []Binding
-			} `asn1:"application,tag:0"`
+			} `asn1:"application,tag:0"` // 0 is SNMPv2c get-request, rfc1905
 		}
-		p.Version = 1
+		p.Version = 1 // v2c
 		p.Community = []byte(tr.Community)
 		p.Data.RequestID = req.ID
 		p.Data.Bindings = req.Bindings
@@ -208,9 +223,41 @@ func (tr *Transport) RoundTrip(req *Request) (*Response, error) {
 				ErrorStatus int
 				ErrorIndex  int
 				Bindings    []Binding
-			} `asn1:"application,tag:1"`
+			} `asn1:"application,tag:1"` // 1 is SNMPv2c get-next, rfc1905
 		}
-		p.Version = 1
+		p.Version = 1 // v2
+		p.Community = []byte(tr.Community)
+		p.Data.RequestID = req.ID
+		p.Data.Bindings = req.Bindings
+		buf, err = asn1.Marshal(p)
+	case "Response":
+		var p struct {
+			Version   int
+			Community []byte
+			Data      struct {
+				RequestID   int32
+				ErrorStatus int
+				ErrorIndex  int
+				Bindings    []Binding
+			} `asn1:"application,tag:2"` // 2 is SNMPv2c response, rfc1905
+		}
+		p.Version = 1 // v2
+		p.Community = []byte(tr.Community)
+		p.Data.RequestID = req.ID
+		p.Data.Bindings = req.Bindings
+		buf, err = asn1.Marshal(p)
+	case "Set":
+		var p struct {
+			Version   int
+			Community []byte
+			Data      struct {
+				RequestID   int32
+				ErrorStatus int
+				ErrorIndex  int
+				Bindings    []Binding
+			} `asn1:"application,tag:3"` // 3 is SNMPv2c set-request, rfc1905
+		}
+		p.Version = 1 // v2
 		p.Community = []byte(tr.Community)
 		p.Data.RequestID = req.ID
 		p.Data.Bindings = req.Bindings
@@ -224,13 +271,61 @@ func (tr *Transport) RoundTrip(req *Request) (*Response, error) {
 				NonRepeaters   int
 				MaxRepetitions int
 				Bindings       []Binding
-			} `asn1:"application,tag:5"`
+			} `asn1:"application,tag:5"` // 5 is SNMPv2c getBulkRequest, rfc1905
 		}
-		p.Version = 1
+		p.Version = 1 // v2
 		p.Community = []byte(tr.Community)
 		p.Data.RequestID = req.ID
 		p.Data.NonRepeaters = 0
 		p.Data.MaxRepetitions = req.MaxRepetitions
+		p.Data.Bindings = req.Bindings
+		buf, err = asn1.Marshal(p)
+	case "Inform":
+		var p struct {
+			Version   int
+			Community []byte
+			Data      struct {
+				RequestID   int32
+				ErrorStatus int
+				ErrorIndex  int
+				Bindings    []Binding
+			} `asn1:"application,tag:6"` // 6 is SNMPv2c get-next, rfc1905
+		}
+		p.Version = 1 // v2
+		p.Community = []byte(tr.Community)
+		p.Data.RequestID = req.ID
+		p.Data.Bindings = req.Bindings
+		buf, err = asn1.Marshal(p)
+	case "Trap":
+		var p struct {
+			Version   int
+			Community []byte
+			Data      struct {
+				RequestID   int32
+				ErrorStatus int
+				ErrorIndex  int
+				Bindings    []Binding
+			} `asn1:"application,tag:7"` // 7 is SNMPv2c snmpV2-trap, rfc1905
+		}
+		p.Version = 1 // v2
+		p.Community = []byte(tr.Community)
+		p.Data.RequestID = req.ID
+		p.Data.Bindings = req.Bindings
+		buf, err = asn1.Marshal(p)
+	case "Report":
+		var p struct {
+			Version   int
+			Community []byte
+			Data      struct {
+				RequestID   int32
+				ErrorStatus int
+				ErrorIndex  int
+				Bindings    []Binding
+			} `asn1:"application,tag:8"` // 8 is SNMPv2c report, rfc1905
+		}
+		p.Version = 1 // v2
+		p.Community = []byte(tr.Community)
+		p.Data.RequestID = req.ID
 		p.Data.Bindings = req.Bindings
 		buf, err = asn1.Marshal(p)
 	default:
@@ -242,7 +337,7 @@ func (tr *Transport) RoundTrip(req *Request) (*Response, error) {
 	if _, err := tr.Conn.Write(buf); err != nil {
 		return nil, err
 	}
-	buf = make([]byte, 10000, 10000)
+	buf = make([]byte, 65536, 65536)
 	if err := tr.Conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return nil, err
 	}
@@ -261,7 +356,7 @@ func (tr *Transport) RoundTrip(req *Request) (*Response, error) {
 			ErrorStatus int
 			ErrorIndex  int
 			Bindings    []Binding
-		} `asn1:"tag:2"`
+		} `asn1:"tag:2"` // 2 is SNMP get-response
 	}
 	if _, err = asn1.Unmarshal(buf[:n], &p); err != nil {
 		return nil, err

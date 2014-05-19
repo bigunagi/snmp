@@ -1,4 +1,4 @@
-// +build ignore
+//// +build ignore
 
 package snmp
 
@@ -25,7 +25,7 @@ var getTests = []GetTest{
 func TestGetNil(t *testing.T) {
 	var v interface{}
 	for _, test := range getTests {
-		if err := Get("localhost", "public", test.oid, &v); err != nil {
+		if err := Get(hostTests[0], "public", test.oid, &v); err != nil {
 			t.Errorf("%s unexpected error: %v", test.oid, err)
 			continue
 		}
@@ -45,6 +45,8 @@ type HostTest struct {
 var hostTests = []string{
 	"localhost",
 	"localhost:161",
+	// "192.168.11.11",
+	// "192.168.11.11:161",
 }
 
 func TestHostPort(t *testing.T) {
@@ -82,7 +84,7 @@ func TestCommunity(t *testing.T) {
 		test := test
 		go func() {
 			var v interface{}
-			test.err = Get("localhost", str, stringType, &v)
+			test.err = Get(hostTests[0], str, stringType, &v)
 			ch <- test
 		}()
 	}
@@ -104,7 +106,7 @@ func TestParallel(t *testing.T) {
 	for i := 0; i < N; i++ {
 		go func() {
 			var v interface{}
-			if err := Get("localhost", "public", stringType, &v); err != nil {
+			if err := Get(hostTests[0], "public", stringType, &v); err != nil {
 				t.Errorf("%d unexpected error: %v", i, err)
 			}
 			done <- true
@@ -130,7 +132,7 @@ var multiTests = []MultiTest{
 
 func TestGetMulti(t *testing.T) {
 	for _, test := range multiTests {
-		err := Get("localhost", "public", test.args...)
+		err := Get(hostTests[0], "public", test.args...)
 		if (test.expect == "") != (err == nil) {
 			t.Errorf("%v: unexpected error: %v", test.args, err)
 			continue

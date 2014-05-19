@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/masiulaniec/snmp/mib"
+	"github.com/nashtsai/snmp/mib"
 )
 
 // Rows is the result of a walk. Its cursor starts before the first
@@ -234,9 +234,10 @@ func lookup(oids ...string) []asn1.ObjectIdentifier {
 	for _, o := range oids {
 		oid, err := mib.Lookup(o)
 		if err != nil {
-			panic(err)
+			//panic(err)
+		} else {
+			list = append(list, oid)
 		}
-		list = append(list, oid)
 	}
 	return list
 }

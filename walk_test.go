@@ -1,4 +1,4 @@
-// +build ignore
+//// +build ignore
 
 package snmp
 
@@ -9,7 +9,7 @@ import (
 )
 
 func TestWalk(t *testing.T) {
-	s, err := Walk("localhost", "public", "IF-MIB::ifDescr", "IF-MIB::ifMtu")
+	s, err := Walk(hostTests[0], "public", "IF-MIB::ifDescr", "IF-MIB::ifMtu")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 		return
