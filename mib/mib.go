@@ -12,7 +12,7 @@ import (
 	"sync"
 )
 
-var mibDir = ""
+var mibDir = "/Users/nash/.snmp/mibs/NetSNMP:/Users/nash/.snmp/mibs/JuniperMibs:/Users/nash/.snmp/mibs/StandardMibs:/Users/nash/.snmp/mibs/iana:/Users/nash/.snmp/mibs/ieft"
 
 // Load registers an additional directory with MIB files. The standard
 // system MIBs are always pre-loaded.
@@ -41,8 +41,8 @@ func Lookup(prefix string) (asn1.ObjectIdentifier, error) {
 	cmd := exec.Command(
 		"snmptranslate",
 		"-Le",
-		"-M", "+"+mibDir,
-		"-m", "all",
+		"-M", mibDir,
+		"-m", "ALL",
 		"-On",
 		prefix,
 	)
