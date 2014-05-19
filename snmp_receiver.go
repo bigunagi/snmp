@@ -44,6 +44,41 @@ func (s *SnmpReceiver) handleConnection(conn net.Conn) (*TrapV2, *TrapV1, error)
 		return nil, nil, fmt.Errorf("response too big")
 	}
 
+	var snmpInform struct {
+		Version   int
+		Community []byte
+		Data      struct {
+			RequestID   int32
+			ErrorStatus int
+			ErrorIndex  int
+			Bindings    []Binding
+		} `asn1:"application,tag:6"` // 6 is SNMP inform-request, rfc1905
+	}
+
+	if _, err = asn1.Unmarshal(buf[:n], &snmpInform); err == nil {
+		// receive SNMP inform-request
+		var response struct {
+			Version   int
+			Community []byte
+			Data      struct {
+				RequestID   int32
+				ErrorStatus int
+				ErrorIndex  int
+				Bindings    []Binding
+			} `asn1:"application,tag:2"` // 2 is SNMP response, rfc1905
+		}
+		response.Version = snmpInform.Version
+		response.Community = snmpInform.Community
+		response.Data.RequestID = snmpInform.Data.RequestID
+		var outBuf []byte
+		outBuf, err = asn1.Marshal(response)
+		if _, err := conn.Write(outBuf); err != nil {
+			//return nil, nil, err
+		}
+		inform := &TrapV2{snmpInform.Data.RequestID, snmpInform.Data.ErrorStatus, snmpInform.Data.ErrorIndex, snmpInform.Data.Bindings}
+		return inform, nil, nil
+	}
+
 	var snmpV2trap struct {
 		Version   int
 		Community []byte
@@ -70,9 +105,9 @@ func (s *SnmpReceiver) handleConnection(conn net.Conn) (*TrapV2, *TrapV1, error)
 		}
 
 		if _, err = asn1.Unmarshal(buf[:n], &snmpV1trap); err != nil {
+
 			return nil, nil, err
 		} else {
-			// TODO handle SNMPv1 trap
 			trap := &TrapV1{
 				Enterprise:   snmpV1trap.Data.Enterprise,
 				AgentAddr:    snmpV1trap.Data.AgentAddr,
@@ -81,26 +116,6 @@ func (s *SnmpReceiver) handleConnection(conn net.Conn) (*TrapV2, *TrapV1, error)
 				Timestamp:    snmpV1trap.Data.Timestamp,
 				Bindings:     snmpV1trap.Data.Bindings}
 			return nil, trap, nil
-		}
-	} else {
-		// send SNMP inform-request
-		var p struct {
-			Version   int
-			Community []byte
-			Data      struct {
-				RequestID   int32
-				ErrorStatus int
-				ErrorIndex  int
-				Bindings    []Binding
-			} `asn1:"application,tag:6"` // 6 is SNMP inform-request, rfc1905
-		}
-		p.Version = snmpV2trap.Version
-		p.Community = snmpV2trap.Community
-		p.Data.RequestID = snmpV2trap.Data.RequestID
-		var outBuf []byte
-		outBuf, err = asn1.Marshal(p)
-		if _, err := conn.Write(outBuf); err != nil {
-			return nil, nil, err
 		}
 	}
 	trap := &TrapV2{snmpV2trap.Data.RequestID, snmpV2trap.Data.ErrorStatus, snmpV2trap.Data.ErrorIndex, snmpV2trap.Data.Bindings}
