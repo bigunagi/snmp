@@ -149,15 +149,17 @@ type Response struct {
 	Bindings    []Binding
 }
 
+type TrapV2 Response
+
 // Trap represents the notify from an SNMPv1 trap.
-// type Trap struct {
-// 	Enterprise   asn1.ObjectIdentifier
-// 	AgentAddr    string // OctetString
-// 	GenericTrap  int
-// 	SpecificTrap int
-// 	Timestamp    int // 0, 4294967295
-// 	Bindings     []Binding
-// }
+type TrapV1 struct {
+	Enterprise   asn1.ObjectIdentifier
+	AgentAddr    int32 // OctetString
+	GenericTrap  int
+	SpecificTrap int
+	Timestamp    TimeTicks // 0, 4294967295
+	Bindings     []Binding
+}
 
 // RoundTripper is an interface representing the ability to execute a
 // single SNMP transaction, obtaining the Response for a given Request.

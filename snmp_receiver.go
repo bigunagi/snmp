@@ -3,13 +3,13 @@ package snmp
 import (
 	"encoding/asn1"
 	"fmt"
-	"math/rand"
+	//"math/rand"
 	"net"
-	"time"
+	//"time"
 )
 
 type SnmpReceiver struct {
-	ln *net.Listener
+	ln net.Listener
 }
 
 func (s *SnmpReceiver) Listen(laddr ...string) (err error) {
@@ -22,8 +22,8 @@ func (s *SnmpReceiver) Listen(laddr ...string) (err error) {
 }
 
 func (s *SnmpReceiver) Accept() {
-	if s.ln != nil {
-		conn, err := ln.Accept()
+	for s.ln != nil {
+		conn, err := s.ln.Accept()
 		if err != nil {
 			// handle error
 			continue
@@ -32,16 +32,16 @@ func (s *SnmpReceiver) Accept() {
 	}
 }
 
-func (s *SnmpReceiver) handleConnection(conn net.Conn) (err error) {
+func (s *SnmpReceiver) handleConnection(conn net.Conn) (*TrapV2, *TrapV1, error) {
 	buf := make([]byte, 65536, 65536) // TODO freelist
-	conn.Read(b)
+	conn.Read(buf)
 
-	n, err := tr.Conn.Read(buf)
+	n, err := conn.Read(buf)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if n == len(buf) {
-		return nil, fmt.Errorf("response too big")
+		return nil, nil, fmt.Errorf("response too big")
 	}
 
 	var snmpV2trap struct {
@@ -70,9 +70,17 @@ func (s *SnmpReceiver) handleConnection(conn net.Conn) (err error) {
 		}
 
 		if _, err = asn1.Unmarshal(buf[:n], &snmpV1trap); err != nil {
-			return nil, err
+			return nil, nil, err
 		} else {
 			// TODO handle SNMPv1 trap
+			trap := &TrapV1{
+				Enterprise:   snmpV1trap.Data.Enterprise,
+				AgentAddr:    snmpV1trap.Data.AgentAddr,
+				GenericTrap:  snmpV1trap.Data.GenericTrap,
+				SpecificTrap: snmpV1trap.Data.SpecificTrap,
+				Timestamp:    snmpV1trap.Data.Timestamp,
+				Bindings:     snmpV1trap.Data.Bindings}
+			return nil, trap, nil
 		}
 	} else {
 		// send SNMP inform-request
@@ -91,10 +99,10 @@ func (s *SnmpReceiver) handleConnection(conn net.Conn) (err error) {
 		p.Data.RequestID = snmpV2trap.Data.RequestID
 		var outBuf []byte
 		outBuf, err = asn1.Marshal(p)
-		if _, err := tr.Conn.Write(buf); err != nil {
-			return nil, err
+		if _, err := conn.Write(outBuf); err != nil {
+			return nil, nil, err
 		}
 	}
-	trap := &Trap{p.Data.RequestID, p.Data.ErrorStatus, p.Data.ErrorIndex, p.Data.Bindings}
-	return trap, nil
+	trap := &TrapV2{snmpV2trap.Data.RequestID, snmpV2trap.Data.ErrorStatus, snmpV2trap.Data.ErrorIndex, snmpV2trap.Data.Bindings}
+	return trap, nil, nil
 }
