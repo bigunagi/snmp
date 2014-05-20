@@ -135,7 +135,7 @@ func (a Binding) less(b Binding) bool {
 // A Request represents an SNMP request to be sent over a Transport.
 type Request struct {
 	ID             int32
-	Type           string // "Get", "GetNext", "Response", "GetBulk", "Set", "Inform", "Trap", "Report"
+	Type           string // "Get", "GetNext", "GetBulk", "Set", "Report"
 	Bindings       []Binding
 	NonRepeaters   int // used by GetBulk only
 	MaxRepetitions int // used by GetBulk only
@@ -282,6 +282,38 @@ func (tr *Transport) RoundTrip(req *Request) (*Response, error) {
 		p.Data.MaxRepetitions = req.MaxRepetitions
 		p.Data.Bindings = req.Bindings
 		buf, err = asn1.Marshal(p)
+	// case "Inform":
+	// 	var p struct {
+	// 		Version   int
+	// 		Community []byte
+	// 		Data      struct {
+	// 			RequestID   int32
+	// 			ErrorStatus int
+	// 			ErrorIndex  int
+	// 			Bindings    []Binding
+	// 		} `asn1:"application,tag:6"` // 6 is SNMPv2c get-next, rfc1905
+	// 	}
+	// 	p.Version = 1 // v2
+	// 	p.Community = []byte(tr.Community)
+	// 	p.Data.RequestID = req.ID
+	// 	p.Data.Bindings = req.Bindings
+	// 	buf, err = asn1.Marshal(p)
+	// case "Trap":
+	// 	var p struct {
+	// 		Version   int
+	// 		Community []byte
+	// 		Data      struct {
+	// 			RequestID   int32
+	// 			ErrorStatus int
+	// 			ErrorIndex  int
+	// 			Bindings    []Binding
+	// 		} `asn1:"application,tag:7"` // 7 is SNMPv2c snmpV2-trap, rfc1905
+	// 	}
+	// 	p.Version = 1 // v2
+	// 	p.Community = []byte(tr.Community)
+	// 	p.Data.RequestID = req.ID
+	// 	p.Data.Bindings = req.Bindings
+	// 	buf, err = asn1.Marshal(p)
 	case "Report":
 		var p struct {
 			Version   int

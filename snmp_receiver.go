@@ -8,20 +8,33 @@ import (
 	//"time"
 )
 
-type SnmpReceiver struct {
-	ln net.Listener
+type Receiver struct {
+	ln        net.Listener
+	Community string
+	handler   func(*TrapV2, *TrapV1, net.Addr, error) // net.Addr is the remote network address
 }
 
-func (s *SnmpReceiver) Listen(laddr ...string) (err error) {
+// local network address laddr, pass empty laddr to Listen on UDP port 162 on all interfaces.
+func NewReceiver(laddr, community string, handler func(*TrapV2, *TrapV1, net.Addr, error)) (*Receiver, error) {
+	receiver := &Receiver{Community: community, handler: handler}
+
+	var err error
 	if len(laddr) == 0 {
-		s.ln, err = net.Listen("udp", ":162")
+		receiver.ln, err = net.Listen("udp", ":162")
 	} else {
-		s.ln, err = net.Listen("udp", laddr[0])
+		receiver.ln, err = net.Listen("udp", laddr)
 	}
-	return
+	return receiver, err
 }
 
-func (s *SnmpReceiver) Accept() {
+func (s *Receiver) Close() {
+	if s.ln != nil {
+		s.ln.Close()
+		s.ln = nil
+	}
+}
+
+func (s *Receiver) Accept() {
 	for s.ln != nil {
 		conn, err := s.ln.Accept()
 		if err != nil {
@@ -32,16 +45,23 @@ func (s *SnmpReceiver) Accept() {
 	}
 }
 
-func (s *SnmpReceiver) handleConnection(conn net.Conn) (*TrapV2, *TrapV1, error) {
+func (s *Receiver) handleConnection(conn net.Conn) {
 	buf := make([]byte, 65536, 65536) // TODO freelist
+	defer conn.Close()
 	conn.Read(buf)
 
 	n, err := conn.Read(buf)
 	if err != nil {
-		return nil, nil, err
+		if s.handler != nil {
+			s.handler(nil, nil, conn.RemoteAddr(), err)
+		}
+		return
 	}
 	if n == len(buf) {
-		return nil, nil, fmt.Errorf("response too big")
+		if s.handler != nil {
+			s.handler(nil, nil, conn.RemoteAddr(), fmt.Errorf("response too big"))
+		}
+		return
 	}
 
 	var snmpInform struct {
@@ -75,8 +95,10 @@ func (s *SnmpReceiver) handleConnection(conn net.Conn) (*TrapV2, *TrapV1, error)
 		if _, err := conn.Write(outBuf); err != nil {
 			//return nil, nil, err
 		}
+		// treat SNMP Inform as Trap
 		inform := &TrapV2{snmpInform.Data.RequestID, snmpInform.Data.ErrorStatus, snmpInform.Data.ErrorIndex, snmpInform.Data.Bindings}
-		return inform, nil, nil
+		s.handler(inform, nil, conn.RemoteAddr(), nil)
+		return
 	}
 
 	var snmpV2trap struct {
@@ -105,8 +127,7 @@ func (s *SnmpReceiver) handleConnection(conn net.Conn) (*TrapV2, *TrapV1, error)
 		}
 
 		if _, err = asn1.Unmarshal(buf[:n], &snmpV1trap); err != nil {
-
-			return nil, nil, err
+			s.handler(nil, nil, conn.RemoteAddr(), err)
 		} else {
 			trap := &TrapV1{
 				Enterprise:   snmpV1trap.Data.Enterprise,
@@ -115,9 +136,9 @@ func (s *SnmpReceiver) handleConnection(conn net.Conn) (*TrapV2, *TrapV1, error)
 				SpecificTrap: snmpV1trap.Data.SpecificTrap,
 				Timestamp:    snmpV1trap.Data.Timestamp,
 				Bindings:     snmpV1trap.Data.Bindings}
-			return nil, trap, nil
+			s.handler(nil, trap, conn.RemoteAddr(), nil)
 		}
 	}
 	trap := &TrapV2{snmpV2trap.Data.RequestID, snmpV2trap.Data.ErrorStatus, snmpV2trap.Data.ErrorIndex, snmpV2trap.Data.Bindings}
-	return trap, nil, nil
+	s.handler(trap, nil, conn.RemoteAddr(), nil)
 }
